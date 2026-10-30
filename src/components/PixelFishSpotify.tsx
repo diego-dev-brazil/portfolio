@@ -27,34 +27,42 @@ type SpotifyNowPlaying = TrackItem & {
 
 const FALLBACK_TRACKS: TrackItem[] = [
   {
-    track: 'Buddy Holly',
-    artist: 'Weezer',
-    album: 'Weezer (Blue Album)',
-    songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
+    track: 'Blackbird - Remastered 2009',
+    artist: 'The Beatles',
+    album: 'The Beatles (Remastered 2009)',
+    songUrl: 'https://open.spotify.com/track/5jgFfDIR6FR0gvlA56Nakr',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/44/78/03/4478034e-ab18-05d7-d191-19bd2a76a63a/mzaf_3248905697310152252.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/d7/a8/7c/d7a87c46-c7c1-ad50-f7df-d69f9e5c7b30/mzaf_2918272753652652091.plus.aac.p.m4a',
   },
   {
-    track: 'Island In The Sun',
-    artist: 'Weezer',
-    album: 'Weezer (Green Album)',
-    songUrl: 'https://open.spotify.com/track/2MLHyLy5z5l5YRp7momlgw',
+    track: 'Ex-Factor',
+    artist: 'Ms. Lauryn Hill',
+    album: 'The Miseducation of Lauryn Hill',
+    songUrl: 'https://open.spotify.com/track/2VjXGuPVVxyhMgER3Uz2Fe',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/52/a6/03/52a6032e-39c0-fd3e-555d-ce683f3d9d31/mzaf_7707796819108024384.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/4a/b1/4d/4ab14d71-f15b-db05-4419-a83e2762bc8d/mzaf_9017806609491706778.plus.aac.p.m4a',
   },
   {
-    track: 'Veridis Quo',
-    artist: 'Daft Punk',
-    album: 'Discovery',
-    songUrl: 'https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds',
+    track: 'As Tortas e as Cucas',
+    artist: 'Jupiter Apple',
+    album: 'A Sétima Efervescência',
+    songUrl: 'https://open.spotify.com/track/3Wao5zMHFYwWiB5LSyPGPy',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e0/cc/c4/e0ccc4af-ad90-59fe-9a7c-9c32d1a3c380/mzaf_2643765405421046671.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/bf/ce/5f/bfce5f49-1bbf-37db-d9d4-7075b69b5814/mzaf_255129602188928547.plus.aac.p.m4a',
+  },
+  {
+    track: 'Sober to Death',
+    artist: 'Car Seat Headrest',
+    album: 'Twin Fantasy',
+    songUrl: 'https://open.spotify.com/track/6kOHjAOLz9IvUiRGf72Kec',
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/0a/bb/43/0abb43b8-9d82-51e1-e7fa-e0013f507ecd/mzaf_4974754928188483521.plus.aac.p.m4a',
   },
 ];
 
 export function PixelFishSpotify({
-  defaultTrack = 'Buddy Holly',
-  defaultArtist = 'Weezer',
+  defaultTrack = 'Blackbird - Remastered 2009',
+  defaultArtist = 'The Beatles',
 }: PixelFishProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trackIndex, setTrackIndex] = useState(0);
@@ -91,6 +99,10 @@ export function PixelFishSpotify({
   }, [fetchNowPlaying]);
 
   const playlist: TrackItem[] = React.useMemo(() => {
+    const apiTracks = data.demoTracks ?? data.previewTracks ?? data.tracks;
+    if (Array.isArray(apiTracks) && apiTracks.length > 0) {
+      return apiTracks;
+    }
     if (data.configured && data.track && data.artist) {
       return [
         {
@@ -102,10 +114,6 @@ export function PixelFishSpotify({
         },
         ...FALLBACK_TRACKS.filter((item) => item.track !== data.track),
       ];
-    }
-    const apiTracks = data.demoTracks ?? data.previewTracks ?? data.tracks;
-    if (Array.isArray(apiTracks) && apiTracks.length > 0) {
-      return apiTracks;
     }
     return FALLBACK_TRACKS;
   }, [data]);

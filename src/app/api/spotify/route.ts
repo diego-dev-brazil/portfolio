@@ -8,7 +8,7 @@ const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
 const NOW_PLAYING_ENDPOINT =
   'https://api.spotify.com/v1/me/player/currently-playing';
 const RECENTLY_PLAYED_ENDPOINT =
-  'https://api.spotify.com/v1/me/player/recently-played?limit=1';
+  'https://api.spotify.com/v1/me/player/recently-played?limit=8';
 const AUTHORIZE_ENDPOINT = 'https://accounts.spotify.com/authorize';
 
 const SCOPES = [
@@ -19,34 +19,44 @@ const SCOPES = [
 
 const DEMO_TRACKS = [
   {
-    track: 'Buddy Holly',
-    artist: 'Weezer',
-    album: 'Weezer (Blue Album)',
-    songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
+    track: 'Blackbird - Remastered 2009',
+    artist: 'The Beatles',
+    album: 'The Beatles (Remastered 2009)',
+    songUrl: 'https://open.spotify.com/track/5jgFfDIR6FR0gvlA56Nakr',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/44/78/03/4478034e-ab18-05d7-d191-19bd2a76a63a/mzaf_3248905697310152252.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/d7/a8/7c/d7a87c46-c7c1-ad50-f7df-d69f9e5c7b30/mzaf_2918272753652652091.plus.aac.p.m4a',
     progressMs: 0,
-    durationMs: 30000,
+    durationMs: 138386,
   },
   {
-    track: 'Island In The Sun',
-    artist: 'Weezer',
-    album: 'Weezer (Green Album)',
-    songUrl: 'https://open.spotify.com/track/2MLHyLy5z5l5YRp7momlgw',
+    track: 'Ex-Factor',
+    artist: 'Ms. Lauryn Hill',
+    album: 'The Miseducation of Lauryn Hill',
+    songUrl: 'https://open.spotify.com/track/2VjXGuPVVxyhMgER3Uz2Fe',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/52/a6/03/52a6032e-39c0-fd3e-555d-ce683f3d9d31/mzaf_7707796819108024384.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/4a/b1/4d/4ab14d71-f15b-db05-4419-a83e2762bc8d/mzaf_9017806609491706778.plus.aac.p.m4a',
     progressMs: 0,
-    durationMs: 30000,
+    durationMs: 326533,
   },
   {
-    track: 'Veridis Quo',
-    artist: 'Daft Punk',
-    album: 'Discovery',
-    songUrl: 'https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds',
+    track: 'As Tortas e as Cucas',
+    artist: 'Jupiter Apple',
+    album: 'A Sétima Efervescência',
+    songUrl: 'https://open.spotify.com/track/3Wao5zMHFYwWiB5LSyPGPy',
     previewUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e0/cc/c4/e0ccc4af-ad90-59fe-9a7c-9c32d1a3c380/mzaf_2643765405421046671.plus.aac.p.m4a',
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/bf/ce/5f/bfce5f49-1bbf-37db-d9d4-7075b69b5814/mzaf_255129602188928547.plus.aac.p.m4a',
     progressMs: 0,
-    durationMs: 30000,
+    durationMs: 277733,
+  },
+  {
+    track: 'Sober to Death',
+    artist: 'Car Seat Headrest',
+    album: 'Twin Fantasy',
+    songUrl: 'https://open.spotify.com/track/6kOHjAOLz9IvUiRGf72Kec',
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/0a/bb/43/0abb43b8-9d82-51e1-e7fa-e0013f507ecd/mzaf_4974754928188483521.plus.aac.p.m4a',
+    progressMs: 0,
+    durationMs: 304427,
   },
 ];
 
@@ -225,23 +235,76 @@ export async function GET(request: NextRequest) {
       refreshToken
     );
 
-    const nowPlayingRes = await fetch(NOW_PLAYING_ENDPOINT, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      cache: 'no-store',
-    });
+    type SpotifyTrackRaw = {
+      name: string;
+      artists: Array<{ name: string }>;
+      album: { name: string; images: Array<{ url: string }> };
+      external_urls: { spotify: string };
+      preview_url: string | null;
+      duration_ms?: number;
+    };
+
+    const [nowPlayingRes, recentRes] = await Promise.all([
+      fetch(NOW_PLAYING_ENDPOINT, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        cache: 'no-store',
+      }),
+      fetch(RECENTLY_PLAYED_ENDPOINT, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        cache: 'no-store',
+      }),
+    ]);
+
+    const recentTracksList: Array<{
+      track: string;
+      artist: string;
+      album: string;
+      songUrl: string;
+      previewUrl: string | null;
+      progressMs: number;
+      durationMs: number;
+    }> = [];
+
+    if (recentRes.ok) {
+      const recentData = (await recentRes.json()) as {
+        items?: Array<{ track: SpotifyTrackRaw }>;
+      };
+      const seen = new Set<string>();
+      const uniqueRaw: SpotifyTrackRaw[] = [];
+      for (const entry of recentData.items ?? []) {
+        if (!entry?.track?.name || seen.has(entry.track.name)) continue;
+        seen.add(entry.track.name);
+        uniqueRaw.push(entry.track);
+        if (uniqueRaw.length >= 4) break;
+      }
+
+      const resolvedRecent = await Promise.all(
+        uniqueRaw.map(async (t) => {
+          const artistName = t.artists.map((a) => a.name).join(', ');
+          const previewUrl = await resolveAudioPreview(
+            t.name,
+            artistName,
+            t.preview_url
+          );
+          return {
+            track: t.name,
+            artist: artistName,
+            album: t.album.name,
+            songUrl: t.external_urls.spotify,
+            previewUrl,
+            progressMs: 0,
+            durationMs: t.duration_ms ?? 30000,
+          };
+        })
+      );
+      recentTracksList.push(...resolvedRecent);
+    }
 
     if (nowPlayingRes.status === 200) {
       const song = (await nowPlayingRes.json()) as {
         is_playing: boolean;
         progress_ms?: number;
-        item?: {
-          name: string;
-          artists: Array<{ name: string }>;
-          album: { name: string; images: Array<{ url: string }> };
-          external_urls: { spotify: string };
-          preview_url: string | null;
-          duration_ms?: number;
-        };
+        item?: SpotifyTrackRaw;
       };
 
       if (song.item) {
@@ -251,6 +314,21 @@ export async function GET(request: NextRequest) {
           artistName,
           song.item.preview_url
         );
+
+        const currentTrackItem = {
+          track: song.item.name,
+          artist: artistName,
+          album: song.item.album.name,
+          songUrl: song.item.external_urls.spotify,
+          previewUrl,
+          progressMs: song.progress_ms ?? 0,
+          durationMs: song.item.duration_ms ?? 30000,
+        };
+
+        const mergedPlaylist = [
+          currentTrackItem,
+          ...recentTracksList.filter((r) => r.track !== currentTrackItem.track),
+        ];
 
         return NextResponse.json({
           configured: true,
@@ -264,54 +342,27 @@ export async function GET(request: NextRequest) {
           previewUrl,
           progressMs: song.progress_ms ?? 0,
           durationMs: song.item.duration_ms ?? 30000,
-          demoTracks: DEMO_TRACKS,
+          demoTracks: mergedPlaylist.length > 0 ? mergedPlaylist : DEMO_TRACKS,
         });
       }
     }
 
-    // Fallback: última música reproduzida na conta do Spotify
-    const recentRes = await fetch(RECENTLY_PLAYED_ENDPOINT, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      cache: 'no-store',
-    });
-
-    if (recentRes.ok) {
-      const recentData = (await recentRes.json()) as {
-        items?: Array<{
-          track: {
-            name: string;
-            artists: Array<{ name: string }>;
-            album: { name: string; images: Array<{ url: string }> };
-            external_urls: { spotify: string };
-            preview_url: string | null;
-            duration_ms?: number;
-          };
-        }>;
-      };
-      const lastTrack = recentData.items?.[0]?.track;
-      if (lastTrack) {
-        const artistName = lastTrack.artists.map((a) => a.name).join(', ');
-        const previewUrl = await resolveAudioPreview(
-          lastTrack.name,
-          artistName,
-          lastTrack.preview_url
-        );
-
-        return NextResponse.json({
-          configured: true,
-          demoMode: false,
-          isPlaying: false,
-          track: lastTrack.name,
-          artist: artistName,
-          album: lastTrack.album.name,
-          albumImageUrl: lastTrack.album.images[0]?.url ?? null,
-          songUrl: lastTrack.external_urls.spotify,
-          previewUrl,
-          progressMs: 0,
-          durationMs: lastTrack.duration_ms ?? 30000,
-          demoTracks: DEMO_TRACKS,
-        });
-      }
+    if (recentTracksList.length > 0) {
+      const lastTrack = recentTracksList[0];
+      return NextResponse.json({
+        configured: true,
+        demoMode: false,
+        isPlaying: false,
+        track: lastTrack.track,
+        artist: lastTrack.artist,
+        album: lastTrack.album,
+        albumImageUrl: null,
+        songUrl: lastTrack.songUrl,
+        previewUrl: lastTrack.previewUrl,
+        progressMs: 0,
+        durationMs: lastTrack.durationMs,
+        demoTracks: recentTracksList,
+      });
     }
 
     return NextResponse.json(buildDemoPayload());
