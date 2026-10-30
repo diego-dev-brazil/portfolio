@@ -140,17 +140,24 @@ async function saveRefreshTokenToEnvLocal(refreshToken: string) {
   }
 }
 
+// Cache em memória para funcionar imediatamente após o callback OAuth sem precisar reiniciar o servidor
+let runtimeRefreshToken: string | null = null;
+
 export async function GET(request: NextRequest) {
   const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
-  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN?.trim();
+  const refreshToken =
+    runtimeRefreshToken || process.env.SPOTIFY_REFRESH_TOKEN?.trim();
 
   const { searchParams, origin } = request.nextUrl;
-  const redirectUri = `${origin}/api/spotify`;
   const isDev = process.env.NODE_ENV === 'development';
+  // No ambiente local, o Spotify exige 127.0.0.1 (e o Next.js 15 converte nextUrl.origin para localhost)
+  const redirectUri = isDev
+    ? 'http://127.0.0.1:3000/api/spotify'
+    : `${origin}/api/spotify`;
 
   // 1. Fluxo auxiliar para conectar sua conta do Spotify localmente:
-  // Acesse http://localhost:3000/api/spotify?login=1
+  // Acesse http://127.0.0.1:3000/api/spotify?login=1
   if (isDev && searchParams.get('login') === '1') {
     if (!clientId || !clientSecret) {
       return NextResponse.json(
@@ -171,7 +178,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(authUrl.toString());
   }
 
-  // 2. Callback OAuth que salva automaticamente o SPOTIFY_REFRESH_TOKEN no .env.local:
+  // 2. Callback OAuth que salva automaticamente o SPOTIFY_REFRESH_TOKEN no .env.local e redireciona para o portfólio:
   const code = searchParams.get('code');
   if (isDev && code && clientId && clientSecret) {
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -195,15 +202,9 @@ export async function GET(request: NextRequest) {
     };
 
     if (tokenData.refresh_token) {
-      const saved = await saveRefreshTokenToEnvLocal(tokenData.refresh_token);
-      return NextResponse.json({
-        success: true,
-        savedToEnvLocal: saved,
-        instruction: saved
-          ? 'SPOTIFY_REFRESH_TOKEN foi salvo automaticamente no seu .env.local! Reinicie o npm run dev ou recarregue a página.'
-          : 'Copie o refreshToken abaixo para SPOTIFY_REFRESH_TOKEN no seu .env.local',
-        refreshToken: tokenData.refresh_token,
-      });
+      runtimeRefreshToken = tokenData.refresh_token;
+      await saveRefreshTokenToEnvLocal(tokenData.refresh_token);
+      return NextResponse.redirect('http://127.0.0.1:3000/#projetos');
     }
 
     return NextResponse.json(

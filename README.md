@@ -67,3 +67,4 @@ Acesse `http://localhost:3000`.
 * **Comunidade:** Google Student Ambassador (`2026 – Atual`)
 * **GitHub:** [@diego-dev-brazil](https://github.com/diego-dev-brazil)
 * **LinkedIn:** [in/diego-augusto-7aa1a2303](https://www.linkedin.com/in/diego-augusto-7aa1a2303)
+
