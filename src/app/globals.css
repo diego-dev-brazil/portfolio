@@ -1120,6 +1120,23 @@ button { color: inherit; }
   box-shadow: 0 0 8px #34d399;
 }
 
+.pixel-fish-play-text-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7dd3fc;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.pixel-fish-play-text-btn:hover {
+  color: #f0f9ff;
+}
+
 .pixel-fish-track-row {
   display: flex;
   align-items: center;

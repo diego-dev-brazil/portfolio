@@ -20,6 +20,7 @@ type TrackItem = {
 type SpotifyNowPlaying = TrackItem & {
   configured?: boolean;
   isPlaying?: boolean;
+  demoTracks?: TrackItem[];
   previewTracks?: TrackItem[];
   tracks?: TrackItem[];
 };
@@ -30,21 +31,24 @@ const FALLBACK_TRACKS: TrackItem[] = [
     artist: 'Weezer',
     album: 'Weezer (Blue Album)',
     songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
-    previewUrl: null,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/44/78/03/4478034e-ab18-05d7-d191-19bd2a76a63a/mzaf_3248905697310152252.plus.aac.p.m4a',
   },
   {
     track: 'Island In The Sun',
     artist: 'Weezer',
     album: 'Weezer (Green Album)',
     songUrl: 'https://open.spotify.com/track/2MLHyLy5z5l5YRp7momlgw',
-    previewUrl: null,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/52/a6/03/52a6032e-39c0-fd3e-555d-ce683f3d9d31/mzaf_7707796819108024384.plus.aac.p.m4a',
   },
   {
     track: 'Veridis Quo',
     artist: 'Daft Punk',
     album: 'Discovery',
     songUrl: 'https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds',
-    previewUrl: null,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e0/cc/c4/e0ccc4af-ad90-59fe-9a7c-9c32d1a3c380/mzaf_2643765405421046671.plus.aac.p.m4a',
   },
 ];
 
@@ -52,16 +56,17 @@ export function PixelFishSpotify({
   defaultTrack = 'Buddy Holly',
   defaultArtist = 'Weezer',
 }: PixelFishProps) {
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [trackIndex, setTrackIndex] = useState(0);
-  const [progressWidth, setProgressWidth] = useState(7);
+  const [progressWidth, setProgressWidth] = useState(4);
   const [data, setData] = useState<SpotifyNowPlaying>({
     track: defaultTrack,
     artist: defaultArtist,
-    songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
-    previewUrl: null,
+    songUrl: FALLBACK_TRACKS[0].songUrl,
+    previewUrl: FALLBACK_TRACKS[0].previewUrl,
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const shouldAutoPlayNextRef = useRef(false);
 
   const fetchNowPlaying = useCallback(async () => {
     try {
@@ -74,39 +79,18 @@ export function PixelFishSpotify({
         track: json.track || defaultTrack,
         artist: json.artist || defaultArtist,
       }));
-      if (typeof json.isPlaying === 'boolean' && json.configured) {
-        setIsPlaying(json.isPlaying);
-      }
-      if (json.progressMs && json.durationMs) {
-        setProgressWidth(
-          Math.max(3, Math.min(17, Math.round((json.progressMs / json.durationMs) * 17))),
-        );
-      }
     } catch {
-      // Fallback silencioso para o modo preview local
+      // Fallback silencioso para as faixas locais
     }
   }, [defaultArtist, defaultTrack]);
 
   useEffect(() => {
     void fetchNowPlaying();
-    const interval = setInterval(() => void fetchNowPlaying(), 20000);
+    const interval = setInterval(() => void fetchNowPlaying(), 25000);
     return () => clearInterval(interval);
   }, [fetchNowPlaying]);
 
-  // Anima a barra de progresso em tempo real enquanto estiver tocando
-  useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setInterval(() => {
-      setProgressWidth((prev) => (prev >= 17 ? 3 : prev + 1));
-    }, 650);
-    return () => clearInterval(timer);
-  }, [isPlaying]);
-
   const playlist: TrackItem[] = React.useMemo(() => {
-    const apiTracks = data.previewTracks ?? data.tracks;
-    if (Array.isArray(apiTracks) && apiTracks.length > 0) {
-      return apiTracks;
-    }
     if (data.configured && data.track && data.artist) {
       return [
         {
@@ -114,33 +98,64 @@ export function PixelFishSpotify({
           artist: data.artist,
           album: data.album,
           songUrl: data.songUrl,
-          previewUrl: data.previewUrl,
+          previewUrl: data.previewUrl ?? FALLBACK_TRACKS[0].previewUrl,
         },
         ...FALLBACK_TRACKS.filter((item) => item.track !== data.track),
       ];
+    }
+    const apiTracks = data.demoTracks ?? data.previewTracks ?? data.tracks;
+    if (Array.isArray(apiTracks) && apiTracks.length > 0) {
+      return apiTracks;
     }
     return FALLBACK_TRACKS;
   }, [data]);
 
   const activeTrack = playlist[trackIndex % playlist.length] ?? FALLBACK_TRACKS[0];
 
-  const handleTogglePlay = () => {
-    const nextState = !isPlaying;
-    setIsPlaying(nextState);
+  // Quando troca de faixa via botão NEXT, toca automaticamente o áudio da nova faixa
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = 0.65;
+    if (shouldAutoPlayNextRef.current) {
+      shouldAutoPlayNextRef.current = false;
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    }
+  }, [activeTrack.previewUrl, trackIndex]);
 
-    if (audioRef.current && activeTrack.previewUrl) {
-      if (nextState) {
-        void audioRef.current.play().catch(() => {});
-      } else {
-        audioRef.current.pause();
-      }
+  const handleTogglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
+
+    audio.volume = 0.65;
+    if (audio.paused) {
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+      setIsPlaying(false);
     }
   };
 
   const handleNextTrack = () => {
+    shouldAutoPlayNextRef.current = true;
+    setProgressWidth(2);
     setTrackIndex((prev) => (prev + 1) % playlist.length);
-    setProgressWidth(3);
-    setIsPlaying(true);
+  };
+
+  const handleTimeUpdate = () => {
+    const audio = audioRef.current;
+    if (!audio || !audio.duration) return;
+    const ratio = audio.currentTime / audio.duration;
+    setProgressWidth(Math.max(2, Math.min(17, Math.round(ratio * 17))));
   };
 
   const track = activeTrack.track || defaultTrack;
@@ -152,7 +167,14 @@ export function PixelFishSpotify({
         <audio
           ref={audioRef}
           src={activeTrack.previewUrl}
-          onEnded={() => setIsPlaying(false)}
+          preload="none"
+          onTimeUpdate={handleTimeUpdate}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => {
+            setIsPlaying(false);
+            setProgressWidth(17);
+          }}
         />
       )}
 
@@ -160,7 +182,7 @@ export function PixelFishSpotify({
       <button
         type="button"
         onClick={handleTogglePlay}
-        title={isPlaying ? 'Pausar player no peixe' : 'Tocar player no peixe'}
+        title={isPlaying ? 'Pausar música no peixe' : 'Clique no peixe para tocar a música'}
         aria-pressed={isPlaying}
         className="pixel-fish-btn"
       >
@@ -303,7 +325,7 @@ export function PixelFishSpotify({
         </svg>
       </button>
 
-      {/* Metadados da Faixa (Estilo Linear / Monospace Submarino) */}
+      {/* Metadados da Faixa */}
       <div className="pixel-fish-meta">
         <div className="pixel-fish-status">
           <span
@@ -311,13 +333,17 @@ export function PixelFishSpotify({
               isPlaying ? 'pixel-fish-dot--playing' : ''
             }`}
           />
-          <span>
+          <button
+            type="button"
+            onClick={handleTogglePlay}
+            className="pixel-fish-play-text-btn"
+          >
             {isPlaying
               ? data.configured
-                ? 'SPOTIFY LIVE // PLAYING'
-                : 'SPOTIFY PREVIEW // PLAYING'
-              : 'SPOTIFY // PAUSED'}
-          </span>
+                ? 'SPOTIFY LIVE // TOCANDO (PAUSAR)'
+                : 'SPOTIFY // TOCANDO ÁUDIO (PAUSAR)'
+              : 'SPOTIFY // CLIQUE P/ OUVIR ▶'}
+          </button>
         </div>
         <div className="pixel-fish-track-row">
           <a
@@ -333,7 +359,7 @@ export function PixelFishSpotify({
             type="button"
             onClick={handleNextTrack}
             className="pixel-fish-next-btn"
-            title="Alternar para a próxima faixa de preview"
+            title="Próxima faixa com áudio"
           >
             NEXT ▸
           </button>
@@ -342,4 +368,3 @@ export function PixelFishSpotify({
     </div>
   );
 }
-

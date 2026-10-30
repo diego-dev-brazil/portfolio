@@ -1,3 +1,5 @@
+import { promises as fs } from 'fs';
+import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -21,36 +23,61 @@ const DEMO_TRACKS = [
     artist: 'Weezer',
     album: 'Weezer (Blue Album)',
     songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
-    previewUrl: null,
-    progressMs: 68000,
-    durationMs: 160000,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/44/78/03/4478034e-ab18-05d7-d191-19bd2a76a63a/mzaf_3248905697310152252.plus.aac.p.m4a',
+    progressMs: 0,
+    durationMs: 30000,
   },
   {
     track: 'Island In The Sun',
     artist: 'Weezer',
     album: 'Weezer (Green Album)',
     songUrl: 'https://open.spotify.com/track/2MLHyLy5z5l5YRp7momlgw',
-    previewUrl: null,
-    progressMs: 95000,
-    durationMs: 200000,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/52/a6/03/52a6032e-39c0-fd3e-555d-ce683f3d9d31/mzaf_7707796819108024384.plus.aac.p.m4a',
+    progressMs: 0,
+    durationMs: 30000,
   },
   {
     track: 'Veridis Quo',
     artist: 'Daft Punk',
     album: 'Discovery',
     songUrl: 'https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds',
-    previewUrl: null,
-    progressMs: 142000,
-    durationMs: 345000,
+    previewUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e0/cc/c4/e0ccc4af-ad90-59fe-9a7c-9c32d1a3c380/mzaf_2643765405421046671.plus.aac.p.m4a',
+    progressMs: 0,
+    durationMs: 30000,
   },
 ];
+
+async function resolveAudioPreview(
+  track: string,
+  artist: string,
+  spotifyPreviewUrl?: string | null
+): Promise<string | null> {
+  if (spotifyPreviewUrl) return spotifyPreviewUrl;
+  try {
+    const query = encodeURIComponent(`${track} ${artist}`);
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${query}&entity=song&limit=1`,
+      { cache: 'no-store' }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      results?: Array<{ previewUrl?: string }>;
+    };
+    return data.results?.[0]?.previewUrl ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function buildDemoPayload() {
   const primary = DEMO_TRACKS[0];
   return {
     configured: false,
     demoMode: true,
-    isPlaying: true,
+    isPlaying: false,
     track: primary.track,
     artist: primary.artist,
     album: primary.album,
@@ -65,7 +92,7 @@ function buildDemoPayload() {
 async function getAccessToken(
   clientId: string,
   clientSecret: string,
-  refreshToken: string,
+  refreshToken: string
 ) {
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
@@ -89,6 +116,30 @@ async function getAccessToken(
   return response.json() as Promise<{ access_token: string }>;
 }
 
+async function saveRefreshTokenToEnvLocal(refreshToken: string) {
+  const envPath = path.join(process.cwd(), '.env.local');
+  try {
+    let content = '';
+    try {
+      content = await fs.readFile(envPath, 'utf-8');
+    } catch {
+      content = '';
+    }
+    if (/^SPOTIFY_REFRESH_TOKEN=.*$/m.test(content)) {
+      content = content.replace(
+        /^SPOTIFY_REFRESH_TOKEN=.*$/m,
+        `SPOTIFY_REFRESH_TOKEN=${refreshToken}`
+      );
+    } else {
+      content = `${content.trimEnd()}\nSPOTIFY_REFRESH_TOKEN=${refreshToken}\n`;
+    }
+    await fs.writeFile(envPath, content, 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
@@ -96,18 +147,19 @@ export async function GET(request: NextRequest) {
 
   const { searchParams, origin } = request.nextUrl;
   const redirectUri = `${origin}/api/spotify`;
-
   const isDev = process.env.NODE_ENV === 'development';
 
-  // 1. Fluxo auxiliar para gerar o SPOTIFY_REFRESH_TOKEN (restrito ao modo dev local):
+  // 1. Fluxo auxiliar para conectar sua conta do Spotify localmente:
+  // Acesse http://localhost:3000/api/spotify?login=1
   if (isDev && searchParams.get('login') === '1') {
-    if (!clientId) {
+    if (!clientId || !clientSecret) {
       return NextResponse.json(
         {
           error:
-            'Adicione SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no arquivo .env.local antes de iniciar o login.',
+            'Para conectar sua conta do Spotify, adicione SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no arquivo .env.local e acesse /api/spotify?login=1 novamente.',
+          redirectUriToRegisterInSpotifyDashboard: redirectUri,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -119,7 +171,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(authUrl.toString());
   }
 
-  // 2. Callback OAuth restrito ao modo dev local (retorna JSON seguro):
+  // 2. Callback OAuth que salva automaticamente o SPOTIFY_REFRESH_TOKEN no .env.local:
   const code = searchParams.get('code');
   if (isDev && code && clientId && clientSecret) {
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -142,13 +194,22 @@ export async function GET(request: NextRequest) {
       error?: string;
     };
 
-    return NextResponse.json({
-      success: Boolean(tokenData.refresh_token),
-      instruction: tokenData.refresh_token
-        ? 'Copie o valor de refreshToken para SPOTIFY_REFRESH_TOKEN no arquivo .env.local'
-        : 'Falha ao gerar token OAuth.',
-      refreshToken: tokenData.refresh_token ?? null,
-    });
+    if (tokenData.refresh_token) {
+      const saved = await saveRefreshTokenToEnvLocal(tokenData.refresh_token);
+      return NextResponse.json({
+        success: true,
+        savedToEnvLocal: saved,
+        instruction: saved
+          ? 'SPOTIFY_REFRESH_TOKEN foi salvo automaticamente no seu .env.local! Reinicie o npm run dev ou recarregue a página.'
+          : 'Copie o refreshToken abaixo para SPOTIFY_REFRESH_TOKEN no seu .env.local',
+        refreshToken: tokenData.refresh_token,
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Falha ao gerar token OAuth do Spotify.' },
+      { status: 400 }
+    );
   }
 
   // 3. Consulta em tempo real da faixa tocando agora ou tocada recentemente:
@@ -160,7 +221,7 @@ export async function GET(request: NextRequest) {
     const { access_token } = await getAccessToken(
       clientId,
       clientSecret,
-      refreshToken,
+      refreshToken
     );
 
     const nowPlayingRes = await fetch(NOW_PLAYING_ENDPOINT, {
@@ -183,23 +244,31 @@ export async function GET(request: NextRequest) {
       };
 
       if (song.item) {
+        const artistName = song.item.artists.map((a) => a.name).join(', ');
+        const previewUrl = await resolveAudioPreview(
+          song.item.name,
+          artistName,
+          song.item.preview_url
+        );
+
         return NextResponse.json({
           configured: true,
           demoMode: false,
           isPlaying: song.is_playing,
           track: song.item.name,
-          artist: song.item.artists.map((a) => a.name).join(', '),
+          artist: artistName,
           album: song.item.album.name,
           albumImageUrl: song.item.album.images[0]?.url ?? null,
           songUrl: song.item.external_urls.spotify,
-          previewUrl: song.item.preview_url,
+          previewUrl,
           progressMs: song.progress_ms ?? 0,
-          durationMs: song.item.duration_ms ?? 1,
+          durationMs: song.item.duration_ms ?? 30000,
+          demoTracks: DEMO_TRACKS,
         });
       }
     }
 
-    // Fallback: última música reproduzida na conta
+    // Fallback: última música reproduzida na conta do Spotify
     const recentRes = await fetch(RECENTLY_PLAYED_ENDPOINT, {
       headers: { Authorization: `Bearer ${access_token}` },
       cache: 'no-store',
@@ -220,36 +289,32 @@ export async function GET(request: NextRequest) {
       };
       const lastTrack = recentData.items?.[0]?.track;
       if (lastTrack) {
+        const artistName = lastTrack.artists.map((a) => a.name).join(', ');
+        const previewUrl = await resolveAudioPreview(
+          lastTrack.name,
+          artistName,
+          lastTrack.preview_url
+        );
+
         return NextResponse.json({
           configured: true,
           demoMode: false,
           isPlaying: false,
           track: lastTrack.name,
-          artist: lastTrack.artists.map((a) => a.name).join(', '),
+          artist: artistName,
           album: lastTrack.album.name,
           albumImageUrl: lastTrack.album.images[0]?.url ?? null,
           songUrl: lastTrack.external_urls.spotify,
-          previewUrl: lastTrack.preview_url,
+          previewUrl,
           progressMs: 0,
-          durationMs: lastTrack.duration_ms ?? 160000,
+          durationMs: lastTrack.duration_ms ?? 30000,
+          demoTracks: DEMO_TRACKS,
         });
       }
     }
 
-    return NextResponse.json({
-      configured: true,
-      demoMode: false,
-      isPlaying: false,
-      track: 'Buddy Holly',
-      artist: 'Weezer',
-      album: 'Weezer (Blue Album)',
-      songUrl: 'https://open.spotify.com/track/3mwvKOyMmG77zZRunnxp9E',
-      previewUrl: null,
-      progressMs: 68000,
-      durationMs: 160000,
-    });
+    return NextResponse.json(buildDemoPayload());
   } catch {
     return NextResponse.json(buildDemoPayload(), { status: 200 });
   }
 }
-
