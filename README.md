@@ -4,24 +4,31 @@ Portfólio interativo em **Next.js (App Router) + TypeScript** construído como 
 
 ---
 
-## 1. Experimento de Orquestração Multiagente
+## 1. Experimento de Orquestração Multiagente (Build + Security Audit Loop)
 
-Este repositório foi estruturado para testar e validar a divisão de responsabilidades entre agentes especializados operando sob um contrato de tipos compartilhado (`src/types/portfolio.ts`), com regras, agentes e skills versionados diretamente no workspace:
+Este repositório foi estruturado para testar e validar a divisão de responsabilidades entre **3 agentes especializados** operando sob um contrato de tipos compartilhado (`src/types/portfolio.ts`), com regras, agentes e skills versionados diretamente no workspace:
 
 * **[`AGENTS.md`](./AGENTS.md):** Protocolo central de orquestração e isolamento de diretórios por agente.
-* **[`.github/agents/backend.agent.md`](./.github/agents/backend.agent.md) (`@agent-backend`):**
+* **[`.github/agents/backend-builder.agent.md`](./.github/agents/backend-builder.agent.md) (`@agent-backend`):**
   * **Escopo exclusivo:** `src/data/**`, `src/app/api/**`, `src/lib/**`
-  * **Responsabilidades:** Curadoria técnica dos estudos de caso em [`src/data/cases.ts`](./src/data/cases.ts), integração com a API pública do GitHub, integração OAuth2 com o Spotify ([`src/app/api/spotify/route.ts`](./src/app/api/spotify/route.ts)) e camada de autenticação administrativa com sessões assinadas via `HMAC-SHA256` ([`src/lib/admin-auth.ts`](./src/lib/admin-auth.ts)).
-* **[`.github/agents/frontend.agent.md`](./.github/agents/frontend.agent.md) (`@agent-frontend`):**
+  * **Responsabilidades:** Curadoria técnica dos estudos de caso em [`src/data/cases.ts`](./src/data/cases.ts), integração com a API pública do GitHub, integração OAuth2 em tempo real com o Spotify ([`src/app/api/spotify/route.ts`](./src/app/api/spotify/route.ts)) e camada de autenticação administrativa com sessões assinadas via `HMAC-SHA256` ([`src/lib/admin-auth.ts`](./src/lib/admin-auth.ts)).
+* **[`.github/agents/frontend-craft.agent.md`](./.github/agents/frontend-craft.agent.md) (`@agent-frontend`):**
   * **Escopo exclusivo:** `src/components/**`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`
   * **Dependência de Skill:** [`skills/anti-ai-ui.md`](./skills/anti-ai-ui.md) — proíbe clichês visuais de templates gerados por IA e impõe grades assimétricas de 12 colunas com divisórias de `1px` expostas (*exposed hairlines*), superfícies foscas em azul-abissal e tipografia técnica monospace.
+* **[`.github/agents/pentest.agent.md`](./.github/agents/pentest.agent.md) (`@pentest` — Defensive Security & Static Audit Agent):**
+  * **Escopo:** Revisão estática de código, modelagem de ameaças, análise de superfície de ataque, validação de autenticação/autorização e tratamento de segredos (sem varredura externa ou exploração ativa).
+  * **Caso real validado no fluxo:** Durante o desenvolvimento do CMS interno (`/api/projects`), o agente `@pentest` auditou as rotas e reportou um achado de **Severidade Alta** (mutação de projetos sem verificação de identidade). O achado acionou o `@agent-backend` para implementar [`src/lib/admin-auth.ts`](./src/lib/admin-auth.ts) com `crypto.timingSafeEqual`, proteção `Same-Origin` (CSRF) e cookies `HttpOnly` assinados com `HMAC-SHA256`.
 
 ```
-[AGENTS.md Protocol]
-       │
-       ├──► @agent-backend  ──► src/data/cases.ts + src/app/api/* + src/lib/admin-auth.ts
-       │                              │ (Shared Contract: src/types/portfolio.ts)
-       └──► @agent-frontend ──► InteractiveBeach + PixelFishSpotify + CaseStudies (Anti-AI UI)
+                         [AGENTS.md Protocol]
+                                  │
+       ┌──────────────────────────┼──────────────────────────┐
+       ▼                          ▼                          ▼
+ @agent-backend            @agent-frontend               @pentest
+ (APIs, OAuth, Data)       (Pixel Art + Anti-AI UI)      (Static Security Audit)
+ src/data/*, src/app/api/* src/components/*, page.tsx    Audits routes & auth
+       ▲                                                     │
+       └────── Remediates High-Severity Finding (HMAC Auth) ─┘
 ```
 
 ---

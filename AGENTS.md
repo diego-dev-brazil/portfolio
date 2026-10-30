@@ -23,3 +23,10 @@ Both agents MUST strictly obey the TypeScript interfaces defined in `src/types/p
 - **Responsibilities:**
   1. Consume `src/data/cases.ts` and `/api/*` endpoints.
   2. Build the asymmetrical Bento Grid, terminal-style interactive architecture previews, and responsive layout.
+
+## Agent 3: `@pentest` (Defensive Security & Static Code Audit)
+- **Definition:** `.github/agents/pentest.agent.md`
+- **Scope:** Local static security review, threat modeling, attack-surface analysis, authentication/authorization verification, and secrets handling (no live-target scanning or active exploitation).
+- **Responsibilities:**
+  1. Audit API Route Handlers (`src/app/api/**`), client-server trust boundaries, and environment configurations.
+  2. Report findings by severity (Critical, High, Medium, Low) and guide defensive remediation (`src/lib/admin-auth.ts`).
